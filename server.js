@@ -73,6 +73,47 @@ app.listen(PORT, () => {
 
 const streamClient = new TwitterApi(process.env.TWITTER_BEARER_TOKEN);
 
+// API endpoint for frontend
+app.post('/api/analyze', async (req, res) => {
+  try {
+    const { tokenAddress } = req.body;
+    
+    if (!tokenAddress) {
+      return res.status(400).json({ error: 'Token address required' });
+    }
+    
+    console.log(`🔍 Frontend analysis request: ${tokenAddress}`);
+    
+    // Token analizi yap
+    const analysis = await performTokenAnalysis(tokenAddress);
+    
+    if (!analysis) {
+      return res.status(500).json({ error: 'Analysis failed' });
+    }
+    
+    res.json({
+      success: true,
+      tokenAddress,
+      symbol: analysis.symbol,
+      riskScore: analysis.riskScore,
+      riskFactors: [], // Basit başlangıç
+      marketData: {
+        price: analysis.price,
+        priceChange24h: analysis.priceChange24h,
+        marketCap: analysis.marketCap,
+        volume24h: analysis.volume24h
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Frontend analysis error:', error);
+    res.status(500).json({ 
+      error: 'Analysis failed',
+      details: error.message 
+    });
+  }
+});
+
 // Telegram Bot Setup  
 const telegramBot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
 
