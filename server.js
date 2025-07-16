@@ -1,3 +1,4 @@
+const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 const { TwitterApi } = require('twitter-api-v2');
 const cors = require('cors');
@@ -72,6 +73,132 @@ app.listen(PORT, () => {
 
 const streamClient = new TwitterApi(process.env.TWITTER_BEARER_TOKEN);
 
+// Telegram Bot Setup  
+const telegramBot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+
+console.log('🤖 PumpfunRisk Telegram Bot started!');
+
+// Bot komutlarını dinle
+telegramBot.on('message', async (msg) => {
+  const chatId = msg.chat.id;
+  const text = msg.text;
+  
+  console.log(`📱 Telegram message: ${text}`);
+  
+  // Token adresi regex'i
+  const tokenAddressRegex = /[1-9A-HJ-NP-Za-km-z]{32,44}/;
+  const match = text.match(tokenAddressRegex);
+  
+  if (match) {
+    const tokenAddress = match[0];
+    console.log(`🎯 Analyzing token: ${tokenAddress}`);
+    
+    // "Analyzing..." mesajı gönder
+    await telegramBot.sendMessage(chatId, '🔍 Analyzing token... Please wait...');
+    
+    // Token analizini yap
+    const analysis = await performTokenAnalysis(tokenAddress);
+    
+    if (analysis) {
+      await sendTelegramAnalysis(chatId, tokenAddress, analysis);
+    } else {
+      await telegramBot.sendMessage(chatId, '❌ Could not analyze this token. Please check the address.');
+    }
+  } else {
+    // Yardım mesajı
+    await telegramBot.sendMessage(chatId, `
+🤖 PumpfunRisk Bot
+
+Send me a Solana token address for analysis!
+
+Example: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+
+📊 I'll analyze:
+- Risk Score  
+- Market Cap
+- Holders
+- Technical Analysis
+- Price Changes
+`);
+  }
+});
+
+// Telegram analiz sonucu gönder
+async function sendTelegramAnalysis(chatId, tokenAddress, analysis) {
+  try {
+    const analysisMessage = `
+🎯 **TOKEN ANALYSIS**
+
+**${analysis.symbol || 'TOKEN'}**
+24h Change: ${analysis.priceChange24h || 'N/A'}%
+**Technical Score: ${analysis.technicalScore || 'N/A'}/100**
+Market Cap: $${formatMarketCap(analysis.marketCap)}
+**Token Distribution: ${analysis.holderCount || 'N/A'} holders**
+24H Volume: $${formatVolume(analysis.volume24h)}
+**Risk Score: ${analysis.riskScore || 'N/A'}/100**
+
+AI-powered token risk scanner
+Detect rugs, honeypots & pump scams
+https://safememefi-analyzer.vercel.app/
+`;
+
+    const keyboard = {
+      inline_keyboard: [
+        [
+          { text: '🟢 BUY', callback_data: `buy_${tokenAddress}` },
+          { text: '🔴 SELL', callback_data: `sell_${tokenAddress}` }
+        ],
+        [
+          { text: '📊 Full Analysis', url: `https://safememefi-analyzer.vercel.app/?token=${tokenAddress}` },
+          { text: '📈 Chart', url: `https://dexscreener.com/solana/${tokenAddress}` }
+        ]
+      ]
+    };
+
+    await telegramBot.sendMessage(chatId, analysisMessage, {
+      reply_markup: keyboard,
+      parse_mode: 'Markdown'
+    });
+
+    console.log('✅ Telegram analysis sent successfully');
+    
+  } catch (error) {
+    console.error('❌ Telegram analysis error:', error);
+    await telegramBot.sendMessage(chatId, 'Sorry, there was an error sending the analysis.');
+  }
+}
+
+// Telegram button handler
+telegramBot.on('callback_query', async (callbackQuery) => {
+  const action = callbackQuery.data.split('_')[0];
+  const tokenAddress = callbackQuery.data.split('_')[1];
+  
+  if (action === 'buy') {
+    await telegramBot.answerCallbackQuery(callbackQuery.id);
+    await telegramBot.sendMessage(callbackQuery.message.chat.id, `
+🟢 **BUY ${tokenAddress.slice(0, 8)}...**
+
+Quick trade options:
+🔗 Jupiter: https://jup.ag/swap/SOL-${tokenAddress}
+🔗 Raydium: https://raydium.io/swap/?inputCurrency=sol&outputCurrency=${tokenAddress}
+🔗 DexScreener: https://dexscreener.com/solana/${tokenAddress}
+
+⚠️ Always DYOR before trading!
+`, { parse_mode: 'Markdown' });
+  } else if (action === 'sell') {
+    await telegramBot.answerCallbackQuery(callbackQuery.id);
+    await telegramBot.sendMessage(callbackQuery.message.chat.id, `
+🔴 **SELL ${tokenAddress.slice(0, 8)}...**
+
+Quick trade options:
+🔗 Jupiter: https://jup.ag/swap/${tokenAddress}-SOL
+🔗 Raydium: https://raydium.io/swap/?inputCurrency=${tokenAddress}&outputCurrency=sol
+
+⚠️ Always DYOR before trading!
+`, { parse_mode: 'Markdown' });
+  }
+});
+
 const startMentionPolling = async () => {
   console.log('🔄 Starting mention polling (free tier)...');
   
@@ -85,10 +212,10 @@ const startMentionPolling = async () => {
         'tweet.fields': ['author_id', 'created_at', 'text']
       });
       
-      if (mentions.data && Array.isArray(mentions.data)) {
-  console.log(`📬 Found ${mentions.data.length} recent mentions`);
+      if (mentions._realData && mentions._realData.data && Array.isArray(mentions._realData.data)) {
+  console.log(`📬 Found ${mentions._realData.data.length} recent mentions`);
   
-  for (const tweet of mentions.data) {
+  for (const tweet of mentions._realData.data) {
     const tokenAddress = extractTokenAddress(tweet.text);
     if (tokenAddress) {
       console.log('🎯 Found mention with token:', tokenAddress);
@@ -235,17 +362,21 @@ async function getTokenMetadata(connection, mintPublicKey) {
 
 async function getMarketData(tokenAddress) {
   try {
-    // Jupiter API ile price data al
-    const response = await fetch(`https://price.jup.ag/v4/price?ids=${tokenAddress}`);
+    console.log(`🔍 Fetching market data for: ${tokenAddress}`);
+    
+    // DexScreener API
+    const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`);
     const data = await response.json();
     
-    if (data.data && data.data[tokenAddress]) {
-      const tokenData = data.data[tokenAddress];
+    console.log('DexScreener Response:', JSON.stringify(data, null, 2));
+    
+    if (data.pairs && data.pairs.length > 0) {
+      const pair = data.pairs[0]; // İlk pair'i al
       return {
-        price: tokenData.price,
-        priceChange24h: tokenData.priceChange24h || 0,
-        marketCap: tokenData.price * 1000000000, // Rough calculation
-        volume24h: tokenData.volume24h || 0
+        price: parseFloat(pair.priceUsd) || 0,
+        priceChange24h: parseFloat(pair.priceChange.h24) || 0,
+        marketCap: parseFloat(pair.marketCap) || 0,
+        volume24h: parseFloat(pair.volume.h24) || 0
       };
     }
     
@@ -258,6 +389,8 @@ async function getMarketData(tokenAddress) {
 
 async function getHoldersAnalysis(connection, mintPublicKey) {
   try {
+    const { PublicKey } = require('@solana/web3.js');
+    
     // Token accounts al
     const tokenAccounts = await connection.getTokenAccountsByOwner(
       mintPublicKey,
