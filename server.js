@@ -127,18 +127,28 @@ Example: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
 async function sendTelegramAnalysis(chatId, tokenAddress, analysis) {
   try {
     const analysisMessage = `
-🎯 **TOKEN ANALYSIS**
+🎯 **${analysis.symbol || 'TOKEN'} ANALYSIS**
 
-**${analysis.symbol || 'TOKEN'}**
-24h Change: ${analysis.priceChange24h || 'N/A'}%
-**Technical Score: ${analysis.technicalScore || 'N/A'}/100**
-Market Cap: $${formatMarketCap(analysis.marketCap)}
-**Token Distribution: ${analysis.holderCount || 'N/A'} holders**
-24H Volume: $${formatVolume(analysis.volume24h)}
-**Risk Score: ${analysis.riskScore || 'N/A'}/100**
+📊 **Price Data:**
+- Price: $${analysis.price?.toFixed(6) || 'N/A'}
+- 24h Change: ${analysis.priceChange24h?.toFixed(2) || 'N/A'}%
+- Market Cap: $${formatMarketCap(analysis.marketCap)}
+- 24H Volume: $${formatVolume(analysis.volume24h)}
+
+🔍 **Technical Analysis:**
+- Technical Score: ${analysis.technicalScore || 'N/A'}/100
+- Risk Score: ${analysis.riskScore || 'N/A'}/100
+
+👥 **Token Distribution:**
+- Holders: ${analysis.holderCount || 'N/A'}
+- Top Holder: ${analysis.topHolderPercentage || 'N/A'}%
+
+⚠️ **Risk Factors:**
+${generateRiskFactors(analysis)}
+
+🚀 **Recommendation:** ${getRecommendation(analysis)}
 
 AI-powered token risk scanner
-Detect rugs, honeypots & pump scams
 https://safememefi-analyzer.vercel.app/
 `;
 
@@ -166,6 +176,25 @@ https://safememefi-analyzer.vercel.app/
     console.error('❌ Telegram analysis error:', error);
     await telegramBot.sendMessage(chatId, 'Sorry, there was an error sending the analysis.');
   }
+}
+
+function generateRiskFactors(analysis) {  // ← BURAYA EKLE
+  const factors = [];
+  
+  if (analysis.holderCount < 100) factors.push("• Low holder count");
+  if (analysis.marketCap < 100000) factors.push("• Low market cap");
+  if (analysis.volume24h < 10000) factors.push("• Low trading volume");
+  if (analysis.topHolderPercentage > 50) factors.push("• High concentration");
+  
+  return factors.length > 0 ? factors.join('\n') : "• No major risks detected";
+}
+
+function getRecommendation(analysis) {
+  const score = analysis.riskScore;
+  
+  if (score <= 30) return "🟢 LOW RISK - Good for investment";
+  if (score <= 60) return "🟡 MEDIUM RISK - Proceed with caution";
+  return "🔴 HIGH RISK - Not recommended";
 }
 
 // Telegram button handler
@@ -344,14 +373,24 @@ async function performTokenAnalysis(tokenAddress) {
   }
 }
 
-// Yardımcı fonksiyonlar
 async function getTokenMetadata(connection, mintPublicKey) {
   try {
-    const metadataAccount = await connection.getAccountInfo(mintPublicKey);
-    // Basit metadata parsing
+    // DexScreener'dan token bilgisi al
+    const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mintPublicKey.toString()}`);
+    const data = await response.json();
+    
+    if (data.pairs && data.pairs.length > 0) {
+      const tokenInfo = data.pairs[0].baseToken;
+      return {
+        symbol: tokenInfo.symbol || 'UNKNOWN',
+        name: tokenInfo.name || 'Unknown Token',
+        decimals: 6
+      };
+    }
+    
     return {
-      symbol: 'TOKEN', // Gerçek metadata parsing gerekir
-      name: 'Token Name',
+      symbol: 'UNKNOWN',
+      name: 'Unknown Token', 
       decimals: 6
     };
   } catch (error) {
