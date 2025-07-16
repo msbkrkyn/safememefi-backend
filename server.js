@@ -449,18 +449,33 @@ async function getHoldersAnalysis(connection, mintPublicKey) {
 }
 
 function calculateRiskScore(holdersAnalysis, marketData) {
-  let riskScore = 50; // Base risk
+  let riskScore = 30; // Base risk (daha yüksek başlangıç)
+  
+  // *** YENİ: Price change riski (EN ÖNEMLİ) ***
+  const priceChange24h = marketData?.priceChange24h || 0;
+  if (priceChange24h < -30) riskScore += 40; // %30'dan fazla düşüş = +40 risk
+  else if (priceChange24h < -20) riskScore += 30; // %20-30 düşüş = +30 risk
+  else if (priceChange24h < -10) riskScore += 20; // %10-20 düşüş = +20 risk
+  else if (priceChange24h < -5) riskScore += 10; // %5-10 düşüş = +10 risk
+  else if (priceChange24h > 100) riskScore += 25; // %100'den fazla artış = pump risk
   
   // Holder count riski
   if (holdersAnalysis?.holderCount < 100) riskScore += 20;
-  if (holdersAnalysis?.holderCount > 1000) riskScore -= 10;
+  else if (holdersAnalysis?.holderCount < 500) riskScore += 10;
+  else if (holdersAnalysis?.holderCount > 1000) riskScore -= 5;
   
   // Market cap riski
-  if (marketData?.marketCap < 100000) riskScore += 25;
-  if (marketData?.marketCap > 1000000) riskScore -= 15;
+  if (marketData?.marketCap < 50000) riskScore += 25; // Çok küçük market cap
+  else if (marketData?.marketCap < 100000) riskScore += 15;
+  else if (marketData?.marketCap > 10000000) riskScore -= 10; // Büyük market cap güvenli
   
   // Volume riski
-  if (marketData?.volume24h < 10000) riskScore += 15;
+  if (marketData?.volume24h < 1000) riskScore += 20; // Çok düşük volume
+  else if (marketData?.volume24h < 10000) riskScore += 10;
+  
+  // Top holder riski
+  if (holdersAnalysis?.topHolderPercentage > 50) riskScore += 20;
+  else if (holdersAnalysis?.topHolderPercentage > 30) riskScore += 10;
   
   return Math.max(0, Math.min(100, riskScore));
 }
