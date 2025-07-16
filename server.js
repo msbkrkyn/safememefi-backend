@@ -164,33 +164,32 @@ Example: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
   }
 });
 
-// Telegram analiz sonucu gönder
 async function sendTelegramAnalysis(chatId, tokenAddress, analysis) {
   try {
     const analysisMessage = `
-🎯 **${analysis.symbol || 'TOKEN'} ANALYSIS**
+🎯 *${analysis.symbol || 'TOKEN'} ANALYSIS*
 
-📊 **Price Data:**
+📊 *Price Data:*
 - Price: $${analysis.price?.toFixed(6) || 'N/A'}
-- 24h Change: ${analysis.priceChange24h?.toFixed(2) || 'N/A'}%
-- Market Cap: $${formatMarketCap(analysis.marketCap)}
-- 24H Volume: $${formatVolume(analysis.volume24h)}
+- 24h Change: ${(analysis.priceChange24h || 0) >= 0 ? '🟢' : '🔴'} *${analysis.priceChange24h?.toFixed(2) || 'N/A'}%*
+- Market Cap: 💰 *$${formatMarketCap(analysis.marketCap)}*
+- 24H Volume: 📈 *$${formatVolume(analysis.volume24h)}*
 
-🔍 **Technical Analysis:**
-- Technical Score: ${analysis.technicalScore || 'N/A'}/100
-- Risk Score: ${analysis.riskScore || 'N/A'}/100
+🔍 *Technical Analysis:*
+- Technical Score: ${getTechnicalEmoji(analysis.technicalScore)} *${analysis.technicalScore || 'N/A'}/100*
+- Risk Score: ${getRiskEmoji(analysis.riskScore)} *${analysis.riskScore || 'N/A'}/100*
 
-👥 **Token Distribution:**
-- Holders: ${analysis.holderCount || 'N/A'}
-- Top Holder: ${analysis.topHolderPercentage || 'N/A'}%
+👥 *Token Distribution:*
+- Holders: 👤 *${analysis.holderCount || 'N/A'}*
+- Top Holder: ${getHolderEmoji(analysis.topHolderPercentage)} *${analysis.topHolderPercentage || 'N/A'}%*
 
-⚠️ **Risk Factors:**
+⚠️ *Risk Factors:*
 ${generateRiskFactors(analysis)}
 
-🚀 **Recommendation:** ${getRecommendation(analysis)}
+🚀 *Recommendation:* ${getRecommendation(analysis)}
 
-AI-powered token risk scanner
-https://safememefi-analyzer.vercel.app/
+🤖 AI-powered token risk scanner
+🔗 https://safememefi-analyzer.vercel.app/
 `;
 
     const keyboard = {
@@ -213,9 +212,13 @@ https://safememefi-analyzer.vercel.app/
 
     console.log('✅ Telegram analysis sent successfully');
     
-  } catch (error) {
-    console.error('❌ Telegram analysis error:', error);
-    await telegramBot.sendMessage(chatId, 'Sorry, there was an error sending the analysis.');
+  } catch (analysisError) {
+    console.error('❌ Telegram analysis error:', analysisError);
+    try {
+      await telegramBot.sendMessage(chatId, 'Sorry, there was an error sending the analysis.');
+    } catch (sendError) {
+      console.error('❌ Error sending error message:', sendError);
+    }
   }
 }
 
@@ -236,6 +239,25 @@ function getRecommendation(analysis) {
   if (score <= 30) return "🟢 LOW RISK - Good for investment";
   if (score <= 60) return "🟡 MEDIUM RISK - Proceed with caution";
   return "🔴 HIGH RISK - Not recommended";
+}
+
+function getTechnicalEmoji(score) {
+  if (score >= 80) return '🟢';
+  if (score >= 60) return '🟡';
+  if (score >= 40) return '🟠';
+  return '🔴';
+}
+
+function getRiskEmoji(score) {
+  if (score <= 30) return '🟢';
+  if (score <= 60) return '🟡';
+  return '🔴';
+}
+
+function getHolderEmoji(percentage) {
+  if (percentage > 50) return '🚨';
+  if (percentage > 30) return '⚠️';
+  return '✅';
 }
 
 // Telegram button handler
